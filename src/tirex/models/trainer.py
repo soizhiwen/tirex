@@ -99,7 +99,7 @@ class Trainer:
         self.early_stopper = EarlyStopping(patience=self.train_config.patience, delta=self.train_config.delta)
 
     def fit(
-        self, train_data: tuple[torch.Tensor, torch.Tensor], val_data: tuple[torch.Tensor, torch.Tensor] | None = None
+        self, train_data: list[tuple[torch.Tensor, torch.Tensor]], val_data: list[tuple[torch.Tensor, torch.Tensor]] | None = None
     ) -> TrainingMetrics:
         if self.train_config.seed is not None:
             set_seed(self.train_config.seed)
@@ -165,29 +165,56 @@ class Trainer:
         return torch.stack(val_loss).mean().item()
 
     def _create_data_loaders(
-        self, train_data: tuple[torch.Tensor, torch.Tensor], val_data: tuple[torch.Tensor, torch.Tensor] | None
+        self, train_data: list[tuple[torch.Tensor, torch.Tensor]], val_data: list[tuple[torch.Tensor, torch.Tensor]] | None
     ) -> tuple[DataLoader, DataLoader]:
         if val_data is None:
-            train_data, val_data = train_val_split(
-                train_data, self.train_config.val_split_ratio, self.train_config.stratify, self.train_config.seed
-            )
+            train_splits: list[tuple[torch.Tensor, torch.Tensor]] = []
+            val_splits: list[tuple[torch.Tensor, torch.Tensor]] = []
+            for ds_train in train_data:
+                train, val = train_val_split(
+                    ds_train,
+                    self.train_config.val_split_ratio,
+                    self.train_config.stratify,
+                    self.train_config.seed,
+                )
+                train_splits.append(train)
+                val_splits.append(val)
+            train_data = train_splits
+            val_data = val_splits
 
-        train_embeddings = self.model.emb_model(train_data[0])
-        val_embeddings = self.model.emb_model(val_data[0])
+        train_embeddings: list[torch.Tensor] = []
+        train_targets: list[torch.Tensor] = []
+        val_embeddings: list[torch.Tensor] = []
+        val_targets: list[torch.Tensor] = []
+
+        for x, y in train_data:
+            emb = self.model.emb_model(x)
+            train_embeddings.append(emb)
+            train_targets.append(y)
+
+        for x, y in val_data:
+            emb = self.model.emb_model(x)
+            val_embeddings.append(emb)
+            val_targets.append(y)
+
+        train_embeddings = torch.cat(train_embeddings, dim=0)
+        train_targets = torch.cat(train_targets, dim=0)
+        val_embeddings = torch.cat(val_embeddings, dim=0)
+        val_targets = torch.cat(val_targets, dim=0)
 
         train_loader = DataLoader(
-            TensorDataset(train_embeddings, train_data[1]),
+            TensorDataset(train_embeddings, train_targets),
             batch_size=self.train_config.batch_size,
             shuffle=True,
         )
 
         val_loader = DataLoader(
-            TensorDataset(val_embeddings, val_data[1]),
+            TensorDataset(val_embeddings, val_targets),
             batch_size=self.train_config.batch_size,
             shuffle=False,
         )
         return train_loader, val_loader
 
     def _log_epoch_metrics(self, epoch: int, train_loss: float, val_loss: float) -> None:
-        if epoch % self.train_config.log_every_n_steps == 0:
+        if (epoch + 1) % self.train_config.log_every_n_steps == 0:
             print(f"Epoch {epoch + 1}, Train Loss: {train_loss:.6f}, Val Loss: {val_loss:.6f}")

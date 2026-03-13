@@ -72,7 +72,8 @@ class TiRexEmbedding(nn.Module):
         embedding = embedding[:, :, -n_patches:, :, :]
         embedding = torch.mean(embedding, dim=2)  # sequence
         embedding = torch.nn.functional.normalize(embedding, p=2, dim=-1)
-        embedding = torch.transpose(embedding, 1, -2).flatten(start_dim=-2)  # var
+        # embedding = torch.transpose(embedding, 1, -2).flatten(start_dim=-2)  # var
+        embedding = torch.mean(embedding, dim=1)  # var
         embedding = torch.transpose(embedding, 1, -2).flatten(start_dim=-2)  # layer
         embedding = F.layer_norm(embedding, (embedding.shape[-1],))
         return embedding

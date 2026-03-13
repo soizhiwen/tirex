@@ -153,7 +153,7 @@ class TirexLinearClassifier(BaseTirexClassifier, torch.nn.Module):
         return self.head(embedding)
 
     def fit(
-        self, train_data: tuple[torch.Tensor, torch.Tensor], val_data: tuple[torch.Tensor, torch.Tensor] | None = None
+        self, train_data: list[tuple[torch.Tensor, torch.Tensor]], val_data: list[tuple[torch.Tensor, torch.Tensor]] | None = None
     ) -> TrainingMetrics:
         """Train the classification head on the provided data.
 
@@ -161,17 +161,22 @@ class TirexLinearClassifier(BaseTirexClassifier, torch.nn.Module):
         then trains it on provided data. The embedding model remains frozen.
 
         Args:
-            train_data: Tuple of (X_train, y_train) where X_train is the input time series
+            train_data: List of tuples (X_train, y_train) where X_train is the input time series
                 data and y_train are the corresponding class labels.
-            val_data: Optional tuple of (X_val, y_val) for validation. If None and
+            val_data: Optional list of tuples (X_val, y_val) for validation. If None and
                 val_split_ratio > 0, validation data will be split from train_data.
 
         Returns:
             dict[str, float]: Dictionary containing final training and validation losses.
         """
-        X_train, y_train = train_data
+        # Use first sample batch to infer embedding dimension
+        X_ref = train_data[0][0]
+        self.emb_dim = self._compute_embeddings(X_ref[:1]).shape[-1]
 
-        self._identify_head_dims(X_train, y_train)
+        # Infer num classes from all provided datasets
+        all_y = torch.cat([y for _, y in train_data], dim=0)
+        self.num_classes = len(torch.unique(all_y))
+
         self.head = self._init_classifier(self.emb_dim, self.num_classes, self.dropout)
         self.head = self.head.to(self.trainer.device)
 
