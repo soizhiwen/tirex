@@ -121,6 +121,7 @@ class Trainer:
 
             stop_training = self.early_stopper(epoch=epoch + 1, val_loss=val_loss)
             if stop_training:
+                print(f"Early stopping triggered at epoch {epoch + 1}")
                 break
 
         return {"train_loss": train_loss, "val_loss": val_loss}
